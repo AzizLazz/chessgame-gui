@@ -1,6 +1,5 @@
 package com.example.chessgame.chessgamegui;
 
-
 import javafx.application.Application;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -8,6 +7,7 @@ import javafx.scene.control.Button;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 
 public class Game extends Application {
@@ -26,17 +26,22 @@ public class Game extends Application {
 
                 // Alternate colors between black and white squares
                 if ((row + col) % 2 == 0) {
-                    square.setStyle("-fx-background-color: white;");
+                    square.setStyle("-fx-background-color: grey;"); // White square
                 } else {
-                    square.setStyle("-fx-background-color: gray;");
+                    square.setStyle("-fx-background-color: grey;"); // Grey square
                 }
+
+                // Set border properties
+                square.setStyle(square.getStyle() + "-fx-border-color: black; -fx-border-width: 2px;");
 
                 // Store row and column in final variables for the lambda
                 final int finalRow = row; // Declare as final
                 final int finalCol = col; // Declare as final
 
                 // Add the square to the board at the specified grid position
-                board.add(square, col, row);
+                if (!((row == 0 && col == 0) || (row == 0 && col == 7) || (row == 7 && col == 0) || (row == 7 && col == 7))) {
+                    board.add(square, col, row);
+                }
 
                 // Add an event handler for each square
                 square.setOnAction(event -> {
