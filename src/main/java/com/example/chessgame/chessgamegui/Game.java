@@ -2,14 +2,16 @@ package com.example.chessgame.chessgamegui;
 
 import javafx.application.Application;
 import javafx.geometry.Pos;
-import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.text.Font;
 import javafx.stage.Stage;
 
 import java.util.ArrayList;
@@ -46,6 +48,10 @@ public class Game extends Application {
     private final GridPane board = new GridPane();
     int[][] piecePositions = new int[BOARD_SIZE][BOARD_SIZE];
     boolean  isRed = true;
+    boolean  turn = true;
+    public static final long topRowMask = 0xFFL;  // Mask for the top row (bits 0-7)
+    public static final long bottomRowMask = 0xFFL << 56;  // Mask for the bottom row (bits 56-63)
+    private Label statusLabel;
 
 
     @Override
@@ -59,22 +65,44 @@ public class Game extends Application {
 
         placePiecesOnBoard();
 
-        Button btn1 = new Button("New Game");
-        Button btn2 = new Button("Move Back << ");
-        Button btn3 = new Button("Move forward >>  ");
+        statusLabel = new Label("Game in progress...");
+        statusLabel.setFont(new Font("Arial", 43));
+        statusLabel.setTextFill(Color.BLACK);
+        statusLabel.setAlignment(Pos.CENTER_RIGHT);
 
-        btn1.setOnAction(event -> System.out.println("New Game Button Clicked!"));
-        btn2.setOnAction(event -> System.out.println("Move Back Clicked!"));
-        btn3.setOnAction(event -> System.out.println("Move Forward Clicked!"));
+        Button btn1 = new Button("New Game");
+        Button btn2 = new Button("Get Best Move from AI");
+        Button btn3 = new Button("complete Bot Game");
+
+        btn1.setOnAction(event -> {piecePositions = readFEN("b0b0b0b0b0b0/1b0b0b0b0b0b01/8/8/8/8/1r0r0r0r0r0r01/r0r0r0r0r0r0");
+        board.getChildren().clear();
+        placePiecesOnBoard();}
+        );
+        btn2.setOnAction(event -> {
+
+            String fen = toFEN();
+            String bestMove = AIBotClient.getBestMoveFromServer(fen); // Call the AI server
+
+            System.out.println("Best move received from AI: " + bestMove);
+
+             Alert alert = new Alert(Alert.AlertType.INFORMATION, "Best move: " + bestMove);
+             alert.showAndWait();
+        });
+
+        //missing implementation
+        btn3.setOnAction(event -> System.out.println("TODO"));
 
         HBox buttonBox = new HBox(10);
         buttonBox.getChildren().addAll(btn1, btn2, btn3);
-        buttonBox.setAlignment(Pos.CENTER_LEFT);
+        buttonBox.setAlignment(Pos.CENTER);
+        Label msg = new Label("  A      B      C      D      E      F      G      H");
+        msg.setFont(new Font("Arial", 43));
+        msg.setTextFill(Color.BLACK);
 
         VBox root = new VBox();
-        root.getChildren().addAll(board, buttonBox);
+        root.getChildren().addAll(msg,board, buttonBox,statusLabel);
 
-        Scene scene = new Scene(root, 800, 800);
+        Scene scene = new Scene(root, 800, 900);
         primaryStage.setTitle("Aziz GUI");
         primaryStage.setScene(scene);
         primaryStage.show();
@@ -270,6 +298,51 @@ public class Game extends Application {
         return (byte) (row * 8 + col);
     }
 
+    public String currentWinningState() {
+        // Define masks for the top and bottom rows
+
+        long bluePieces = blueSingles | blueDoubles | blue_on_red;
+        long redPieces = redSingles | redDoubles | red_on_blue;
+
+        // Check if any blue piece is in the top row or no red pieces
+        if ((bluePieces & topRowMask) != 0 || redPieces == 0) {
+            return "Winner: Blue";
+        }
+        // Check if any red piece is in the bottom row or no blue pieces
+        else if ((redPieces & bottomRowMask) != 0 || bluePieces == 0) {
+            return "Winner: Red";
+        }
+        // Check if there are any possible moves for blue
+        else if (getPossibleMovesForTeam(false) == 0) {
+            // Check if there are any possible moves for red, if no -> draw
+            if (getPossibleMovesForTeam(true) == 0) {
+                return "Draw";
+            } else {
+                return "Winner: Red";
+            }
+        }
+        // Check if there are any possible moves for red
+        else if (getPossibleMovesForTeam(true) == 0) {
+            // Check if there are any possible moves for blue, if no -> draw
+            if (getPossibleMovesForTeam(false) == 0) {
+                return "Draw";
+            } else {
+                return "Winner: Blue";
+            }
+        }
+        return "Ongoing";
+    }
+
+    public long getPossibleMovesForTeam(boolean red) {
+        if (red) {
+            return getPossibleMovesSingles(redSingles, true) | getPossibleMovesDoubles(redDoubles | red_on_blue, true);
+        } else {
+            return getPossibleMovesSingles(blueSingles, false) | getPossibleMovesDoubles(blueDoubles | blue_on_red, false);
+        }
+    }
+
+
+
     public void makeMove2(int fromRow, int fromCol, int toRow, int toCol, boolean isRed) {
         // Convert the 2D grid indices to the corresponding bitboard indices
         byte fromIndex = convertToBitBoardIndex(fromRow, fromCol);
@@ -280,6 +353,19 @@ public class Game extends Application {
 
         // Rebuild the pieces on the board based on the new FEN
         placePiecesOnBoard();
+        System.out.println(currentWinningState());
+
+        String winningState = currentWinningState();
+        if (winningState == "Winner: Red") {
+            statusLabel.setText("Red Wins! Game over");
+            statusLabel.setTextFill(Color.RED); // Change label color to red
+        } else if (winningState == "Winner: Blue") {
+            statusLabel.setText("Blue Wins! Game over");
+            statusLabel.setTextFill(Color.BLUE); // Change label color to blue
+        } else if (winningState == "Draw") {
+            statusLabel.setText("It's a Draw!");
+            statusLabel.setTextFill(Color.GRAY); // Change label color to gray
+        }
     }
 
 
@@ -321,36 +407,41 @@ public class Game extends Application {
                     System.out.println("Square clicked at: (" + finalRow + ", " + finalCol + ")"+ getPieceType(finalRow,finalCol));
 
 
-                    // Case 1: Check if the same square is clicked again or if an empty piece is clicked
-                    if (((finalRow == lastSelectedRow && finalCol == lastSelectedCol) || pieceType == 0 ) && !isMoveHighlighted(finalRow, finalCol)) {
-                        System.out.println("section of same square or empty square  " ) ;
-                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
-                        clearHighlightedSquares(); //  clear the  highlights
-                        lastSelectedCol = -1;
+                    if (currentWinningState() == "Ongoing") {
+                        // Case 1: Check if the same square is clicked again or if an empty piece is clicked
+                        if (((finalRow == lastSelectedRow && finalCol == lastSelectedCol) || pieceType == 0 ) && !isMoveHighlighted(finalRow, finalCol)) {
+                            clearHighlightedSquares(); //  clear the  highlights
+                            lastSelectedCol = -1;
 
-                        // Case 2: A piece has been selected and a valid move square is clicked
-                    } else if (lastSelectedRow != -1 && lastSelectedCol != -1 && isMoveHighlighted(finalRow, finalCol)) {
-                        System.out.println("section of the mooooooooooove  " ) ;
-                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
-                        makeMove2(lastSelectedRow, lastSelectedCol, finalRow, finalCol, isRed);// Make the move
-                        lastSelectedRow = -1;
-                        lastSelectedCol = -1;
+                            // Case 2: A piece has been selected and a valid move square is clicked
+                        } else if (lastSelectedRow != -1 && lastSelectedCol != -1 && isMoveHighlighted(finalRow, finalCol)) {
 
-                        // Case 3: First click on a new piece to highlight possible moves
-                    } else {
-                        System.out.println("section of the possible mooves heyyyyyyy  " ) ;
-                        isRed = (pieceType == 2 || pieceType == 4 || pieceType == 7);
-                        // Highlight possible moves for this piece
-                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
-                        showPossibleMoves(finalRow, finalCol, isRed);
-                        lastSelectedRow = finalRow;
-                        lastSelectedCol = finalCol;
-                    }
-                });
+                            makeMove2(lastSelectedRow, lastSelectedCol, finalRow, finalCol, isRed);// Make the move
+                            turn = !turn;
+                            lastSelectedRow = -1;
+                            lastSelectedCol = -1;
+
+                            // Case 3: First click on a new piece to highlight possible moves
+                        } else if (turn && (pieceType == 2 || pieceType == 4 || pieceType == 7)) {
+                            isRed = (pieceType == 2 || pieceType == 4 || pieceType == 7);
+                            // Highlight possible moves for this piece
+                            showPossibleMoves(finalRow, finalCol, isRed);
+                            lastSelectedRow = finalRow;
+                            lastSelectedCol = finalCol;
+                        } else if (!turn && !(pieceType == 2 || pieceType == 4 || pieceType == 7)) {
+                            isRed = (pieceType == 2 || pieceType == 4 || pieceType == 7);
+                            // Highlight possible moves for this piece
+                            showPossibleMoves(finalRow, finalCol, isRed);
+                            lastSelectedRow = finalRow;
+                            lastSelectedCol = finalCol;
+                        }
+                    }}
+                );
 
 
             }
         }
+
 
     }
 
