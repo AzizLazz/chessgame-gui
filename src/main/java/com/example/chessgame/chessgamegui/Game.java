@@ -2,6 +2,7 @@ package com.example.chessgame.chessgamegui;
 
 import javafx.application.Application;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.layout.GridPane;
@@ -36,96 +37,28 @@ public class Game extends Application {
     public static final long CORNER_MASK = ~(1L | (1L << 7) | (1L << 56) | (1L << 63));
 
     private static final int BOARD_SIZE = 8; // 8x8 chessboard
-    private Button[][] squares = new Button[BOARD_SIZE][BOARD_SIZE]; // Store all squares in a 2D array
+    private final Button[][] squares = new Button[BOARD_SIZE][BOARD_SIZE]; // Store all squares in a 2D array
     private int lastSelectedRow = -1; // Track the last selected square's row
     private int lastSelectedCol = -1; // Track the last selected square's column
-    private List<Button> highlightedSquares = new ArrayList<>(); // Store newly highlighted squares
-    private Map<Button, Circle> originalGraphics = new HashMap<>(); // Store the original graphics (pieces)
+    private final List<Button> highlightedSquares = new ArrayList<>(); // Store newly highlighted squares
+    private final Map<Button, Circle> originalGraphics = new HashMap<>(); // Store the original graphics (pieces)
+
+    private final GridPane board = new GridPane();
+    int[][] piecePositions = new int[BOARD_SIZE][BOARD_SIZE];
+    boolean  isRed = true;
 
 
     @Override
     public void start(Stage primaryStage) {
-        // Create a GridPane for the chessboard
-        GridPane board = new GridPane();
 
-        int[][] piecePositions = readFEN("2bb3/5b02/1bb1bb2b0b0/2br3r01/2b0r04/5r0rr1/2rr2r02/3r02");
+
+        piecePositions = readFEN("b0b0b0b0b0b0/1b0b0b0b0b0b01/8/8/8/8/1r0r0r0r0r0r01/r0r0r0r0r0r0");
+        //6/8/8/8/8/1r06/2r0r0r0r0r01/r0r0r0r0r0r0
         //2bb3/5b02/1bb1bb2b0b0/2br3r01/2b0r04/5r0rr1/2rr2r02/3r02
         //b0b0b0b0b0b0/1b0b0b0b0b0b01/8/8/8/8/1r0r0r0r0r0r01/r0r0r0r0r0r0
 
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                Button square = new Button();
-                square.setPrefSize(100, 100);
+        placePiecesOnBoard();
 
-                // Set background color and border properties
-                square.setStyle("-fx-background-color: rgb(163,163,186); -fx-border-color: black; -fx-border-width: 2px;");
-
-                Circle piece = null;
-
-
-                int pieceType = piecePositions[row][col];
-
-                piece = createPiece(pieceType);
-
-
-                if (piece != null) {
-                    square.setGraphic(piece);
-                    originalGraphics.put(square, piece); // Store original pieces
-                }
-
-                // Add the square to the 2D array for reference later
-                squares[row][col] = square;
-
-                final int finalRow = row;
-                final int finalCol = col;
-
-                if (!((row == 0 && col == 0) || (row == 0 && col == 7) || (row == 7 && col == 0) || (row == 7 && col == 7))) {
-                    board.add(square, col, row);
-                }
-
-                // Add event handler to the square to show possible moves
-                square.setOnAction(event -> {
-                    System.out.println("Square clicked at: (" + finalRow + ", " + finalCol + ")"+ getPieceType(finalRow,finalCol));
-
-
-                    // Case 1: Check if the same square is clicked again or if an invalid piece is clicked
-                    if (((finalRow == lastSelectedRow && finalCol == lastSelectedCol) || pieceType == 0 ) && !isMoveHighlighted(finalRow, finalCol)) {
-                        // Clear highlighting if the same square is clicked again or the piece is invalid (pieceType 0)
-                        System.out.println("section of same square or empty square  " ) ;
-                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
-                        clearHighlightedSquares(); // Only clear the new highlights
-                        lastSelectedRow = -1; // Reset last selected
-                        lastSelectedCol = -1; // Reset last selected
-
-                        // Case 2: A piece has been selected and a valid move square is clicked
-                    } else if (lastSelectedRow != -1 && lastSelectedCol != -1 && isMoveHighlighted(finalRow, finalCol)) {
-                        System.out.println("section of the mooooooooooove  " ) ;
-                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
-                        boolean isRed = (pieceType == 2 || pieceType == 4 || pieceType == 7);
-                        makeMove2(lastSelectedRow, lastSelectedCol, finalRow, finalCol, isRed, board);  // Make the move
-                        //clearHighlightedSquares();  // Clear highlights after the move
-                        lastSelectedRow = -1; // Reset the selection after move
-                        lastSelectedCol = -1; // Reset the selection after move
-
-                        // Case 3: First click on a new piece to highlight possible moves
-                    } else {
-                        System.out.println("section of the possible mooves heyyyyyyy  " ) ;
-                        boolean isRed = (pieceType == 2 || pieceType == 4 || pieceType == 7);  // Example logic for checking the piece type
-                        // Highlight possible moves for this piece
-                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
-                        showPossibleMoves(finalRow, finalCol, isRed);
-                        lastSelectedRow = finalRow;  // Update last selected piece
-                        lastSelectedCol = finalCol;
-                    }
-                });
-
-
-                // Add the square to the grid, excluding corners
-
-            }
-        }
-
-        // Create buttons for additional functionality (if needed)
         Button btn1 = new Button("New Game");
         Button btn2 = new Button("Move Back << ");
         Button btn3 = new Button("Move forward >>  ");
@@ -148,24 +81,27 @@ public class Game extends Application {
     }
 
 
-    public static long[] doMoveAndReturnModifiedBitBoards(byte from, byte to, boolean isRedTurn, long redSingles, long blueSingles, long redDoubles, long blueDoubles, long red_on_blue, long blue_on_red) {
+
+    private static void doMoveAndReturnModifiedBitBoards(byte from, byte to, boolean isRedTurn) {
         if (isRedTurn) {
             if ((redDoubles != 0 && (redDoubles & (1L << from)) != 0) || (red_on_blue != 0 && (red_on_blue & (1L << from)) != 0)) {
-                return moveDoublePieceOnBitBoards(from, to, true, redSingles, blueSingles, redDoubles, blueDoubles, red_on_blue, blue_on_red);
+                moveDoublePieceOnBitBoards(from, to, true);
             } else {
-                return moveSinglePieceOnBitBoards(from, to, true, redSingles, blueSingles, redDoubles, blueDoubles, red_on_blue, blue_on_red);
+                moveSinglePieceOnBitBoards(from, to, true);
             }
         } else {
             if ((blueDoubles != 0 && (blueDoubles & (1L << from)) != 0) || (blue_on_red != 0 && (blue_on_red & (1L << from)) != 0)) {
-                return moveDoublePieceOnBitBoards(from, to, false, redSingles, blueSingles, redDoubles, blueDoubles, red_on_blue, blue_on_red);
+                moveDoublePieceOnBitBoards(from, to, false);
             } else {
-                return moveSinglePieceOnBitBoards(from, to, false, redSingles, blueSingles, redDoubles, blueDoubles, red_on_blue, blue_on_red);
+                moveSinglePieceOnBitBoards(from, to, false);
             }
         }
     }
 
 
-    public static long[] moveSinglePieceOnBitBoards(byte fromIndex, byte toIndex, boolean isRed, long redSingles, long blueSingles, long redDoubles, long blueDoubles, long red_on_blue, long blue_on_red) {
+
+    private static void moveSinglePieceOnBitBoards(byte fromIndex, byte toIndex, boolean isRed) {
+        // Determine which bitboards to use based on the player's color
         long ownSingles = isRed ? redSingles : blueSingles;
         long enemySingles = isRed ? blueSingles : redSingles;
         long ownDoubles = isRed ? redDoubles : blueDoubles;
@@ -186,7 +122,7 @@ public class Game extends Application {
             ownOnEnemy |= (1L << toIndex);
             enemyDoubles &= ~(1L << toIndex);
         } else if ((ownSingles & (1L << toIndex)) != 0) {
-            // Lands on enemy double, transforms to ownOnEnemy
+            // Lands on own single, transforms to own double
             ownDoubles |= (1L << toIndex);
             ownSingles &= ~(1L << toIndex);
         } else if ((enemyOnOwn & (1L << toIndex)) != 0) {
@@ -198,20 +134,28 @@ public class Game extends Application {
             ownSingles |= (1L << toIndex);
         }
 
-        // Update the bitboards
-        return new long[]{
-                isRed ? ownSingles : enemySingles,
-                isRed ? enemySingles : ownSingles,
-                isRed ? ownDoubles : enemyDoubles,
-                isRed ? enemyDoubles : ownDoubles,
-                isRed ? ownOnEnemy : enemyOnOwn,//isRed = red_on_blue else blue_on_red
-                isRed ? enemyOnOwn : ownOnEnemy//isRed= blue_onRed
-        };
-
+        // Update the bitboards directly
+        if (isRed) {
+            redSingles = ownSingles;
+            blueSingles = enemySingles;
+            redDoubles = ownDoubles;
+            blueDoubles = enemyDoubles;
+            red_on_blue = ownOnEnemy;
+            blue_on_red = enemyOnOwn;
+        } else {
+            blueSingles = ownSingles;
+            redSingles = enemySingles;
+            blueDoubles = ownDoubles;
+            redDoubles = enemyDoubles;
+            blue_on_red = ownOnEnemy;
+            red_on_blue = enemyOnOwn;
+        }
     }
 
 
-    public static long[] moveDoublePieceOnBitBoards(byte fromIndex, byte toIndex, boolean isRed, long redSingles, long blueSingles, long redDoubles, long blueDoubles, long red_on_blue, long blue_on_red) {
+
+    private static void moveDoublePieceOnBitBoards(byte fromIndex, byte toIndex, boolean isRed) {
+        // Determine which bitboards to use based on the player's color
         long ownDoubles = isRed ? redDoubles : blueDoubles;
         long ownSingles = isRed ? redSingles : blueSingles;
         long enemySingles = isRed ? blueSingles : redSingles;
@@ -226,7 +170,6 @@ public class Game extends Application {
         ownDoubles &= ~(1L << fromIndex);
         ownOnEnemy &= ~(1L << fromIndex);
 
-        //System.out.println("bt" + bottomIsEnemy);
         // Handle the landing cases
         if ((ownSingles & (1L << toIndex)) != 0) {
             // Landing on own single, turn it into own double
@@ -237,14 +180,15 @@ public class Game extends Application {
             ownDoubles |= (1L << toIndex);
             enemyOnOwn &= ~(1L << toIndex);
         } else if ((enemyDoubles & (1L << toIndex)) != 0) {
-            // Landing on enemy_on_own, turn it into own double
+            // Landing on enemy double, turn it into ownOnEnemy
             ownOnEnemy |= (1L << toIndex);
             enemyDoubles &= ~(1L << toIndex);
         } else if ((enemySingles & (1L << toIndex)) != 0) {
             // Regular move to empty space, place the top of the double as a single
             ownSingles |= (1L << toIndex);
             enemySingles &= ~(1L << toIndex);
-        } else {//TODO: hope all cases are covered and nothing forgotten
+        } else {
+            // Move to an empty square, becomes a single
             ownSingles |= (1L << toIndex);
         }
 
@@ -255,16 +199,24 @@ public class Game extends Application {
             ownSingles |= (1L << fromIndex);
         }
 
-        // Update the state using ternary operators
-        return new long[]{
-                isRed ? ownSingles : enemySingles,
-                isRed ? enemySingles : ownSingles,
-                isRed ? ownDoubles : enemyDoubles,
-                isRed ? enemyDoubles : ownDoubles,
-                isRed ? ownOnEnemy : enemyOnOwn,//isRed = red_on_blue else blue_on_red
-                isRed ? enemyOnOwn : ownOnEnemy//isRed= blue_onRed
-        };
+        // Update the state directly
+        if (isRed) {
+            redSingles = ownSingles;
+            blueSingles = enemySingles;
+            redDoubles = ownDoubles;
+            blueDoubles = enemyDoubles;
+            red_on_blue = ownOnEnemy;
+            blue_on_red = enemyOnOwn;
+        } else {
+            blueSingles = ownSingles;
+            redSingles = enemySingles;
+            blueDoubles = ownDoubles;
+            redDoubles = enemyDoubles;
+            blue_on_red = ownOnEnemy;
+            red_on_blue = enemyOnOwn;
+        }
     }
+
 
 
     private Circle createPiece(int pieceType) {
@@ -314,55 +266,100 @@ public class Game extends Application {
         return piece;
     }
 
+    public static byte convertToBitBoardIndex(int row, int col) {
+        return (byte) (row * 8 + col);
+    }
 
-    private void makeMove2(int fromRow, int fromCol, int toRow, int toCol, boolean isRed , GridPane board) {
-        // Step 1: Get piece types at start and destination
-        clearHighlightedSquares();
-        int fromPieceType = getPieceType(fromRow, fromCol); // Piece at the starting position
-        int toPieceType = getPieceType(toRow, toCol); // Piece at the destination
+    public void makeMove2(int fromRow, int fromCol, int toRow, int toCol, boolean isRed) {
+        // Convert the 2D grid indices to the corresponding bitboard indices
+        byte fromIndex = convertToBitBoardIndex(fromRow, fromCol);
+        byte toIndex = convertToBitBoardIndex(toRow, toCol);
 
-        // Debugging information to track the piece types and positions
-        System.out.println("From (" + fromRow + ", " + fromCol + ") to (" + toRow + ", " + toCol + ")");
-        System.out.println("From piece type: " + fromPieceType + ", To piece type: " + toPieceType);
+        // It's a single piece
+        doMoveAndReturnModifiedBitBoards(fromIndex, toIndex, isRed);
 
-        // Step 2: Clear the graphical piece from the starting square
-        squares[fromRow][fromCol].setGraphic(null); // Clear the piece from the old square
-        System.out.println("Cleared graphic from (" + fromRow + ", " + fromCol + ")");
+        // Rebuild the pieces on the board based on the new FEN
+        placePiecesOnBoard();
+    }
 
-        // Step 3: Move the piece to the destination square based on piece type and color
-        if (fromPieceType == 2 && toPieceType == 0 && isRed) { // Moving a red single piece
-            squares[toRow][toCol].setGraphic(createPiece(2)); // Red single piece to new square
-            System.out.println("Moved red single piece to (" + toRow + ", " + toCol + ")");
-        } else if (fromPieceType == 3 && toPieceType == 0 && !isRed) { // Moving a blue single piece
-            squares[toRow][toCol].setGraphic(createPiece(3)); // Blue single piece to new square
-            System.out.println("Moved blue single piece to (" + toRow + ", " + toCol + ")");
-        } else if (fromPieceType == 4 && toPieceType == 0 && isRed) { // Moving a red double piece
-            squares[toRow][toCol].setGraphic(createPiece(4)); // Red double piece to new square
-            System.out.println("Moved red double piece to (" + toRow + ", " + toCol + ")");
-        } else if (fromPieceType == 5 && toPieceType == 0 && !isRed) { // Moving a blue double piece
-            squares[toRow][toCol].setGraphic(createPiece(5)); // Blue double piece to new square
-            System.out.println("Moved blue double piece to (" + toRow + ", " + toCol + ")");
-        } else {
-            System.out.println("No valid move detected.");
+
+    public void placePiecesOnBoard() {
+
+        String newFen = toFEN();
+        piecePositions = readFEN(newFen);
+        board.getChildren().clear(); // Clear the board to place the new pieces after the move
+
+        for (int row = 0; row < BOARD_SIZE; row++) {
+            for (int col = 0; col < BOARD_SIZE; col++) {
+                Button square = new Button();
+                square.setPrefSize(100, 100);
+
+                // background color and border
+                square.setStyle("-fx-background-color: rgb(163,163,186); -fx-border-color: black; -fx-border-width: 2px;");
+
+                int pieceType = piecePositions[row][col];
+
+                Circle piece = createPiece(pieceType);
+
+                if (piece != null) {
+                    square.setGraphic(piece);
+                    originalGraphics.put(square, piece); // Store original pieces
+                }
+
+                if (!((row == 0 && col == 0) || (row == 0 && col == 7) || (row == 7 && col == 0) || (row == 7 && col == 7))) {
+                    board.add(square, col, row);
+                }
+
+                // Add the square to the 2D array for reference
+                squares[row][col] = square;
+
+                final int finalRow = row;
+                final int finalCol = col;
+
+
+                squares[row][col].setOnAction(event -> {
+                    System.out.println("Square clicked at: (" + finalRow + ", " + finalCol + ")"+ getPieceType(finalRow,finalCol));
+
+
+                    // Case 1: Check if the same square is clicked again or if an empty piece is clicked
+                    if (((finalRow == lastSelectedRow && finalCol == lastSelectedCol) || pieceType == 0 ) && !isMoveHighlighted(finalRow, finalCol)) {
+                        System.out.println("section of same square or empty square  " ) ;
+                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
+                        clearHighlightedSquares(); //  clear the  highlights
+                        lastSelectedCol = -1;
+
+                        // Case 2: A piece has been selected and a valid move square is clicked
+                    } else if (lastSelectedRow != -1 && lastSelectedCol != -1 && isMoveHighlighted(finalRow, finalCol)) {
+                        System.out.println("section of the mooooooooooove  " ) ;
+                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
+                        makeMove2(lastSelectedRow, lastSelectedCol, finalRow, finalCol, isRed);// Make the move
+                        lastSelectedRow = -1;
+                        lastSelectedCol = -1;
+
+                        // Case 3: First click on a new piece to highlight possible moves
+                    } else {
+                        System.out.println("section of the possible mooves heyyyyyyy  " ) ;
+                        isRed = (pieceType == 2 || pieceType == 4 || pieceType == 7);
+                        // Highlight possible moves for this piece
+                        System.out.println("Is highlighted "+ isMoveHighlighted(finalRow, finalCol));
+                        showPossibleMoves(finalRow, finalCol, isRed);
+                        lastSelectedRow = finalRow;
+                        lastSelectedCol = finalCol;
+                    }
+                });
+
+
+            }
         }
-
-        // Final check to confirm destination square is updated
-        if (squares[toRow][toCol].getGraphic() == null) {
-            System.out.println("Destination square graphic not set correctly at (" + toRow + ", " + toCol + ")");
-        } else {
-            System.out.println("Destination square updated successfully at (" + toRow + ", " + toCol + ")");
-        }
-
-        board.add(squares[toRow][toCol], toCol, toRow);
 
     }
 
 
     private int getPieceType(int row, int col) {
         Circle piece = (Circle) squares[row][col].getGraphic();
-        if (piece == null) return 0; // Empty square
+        if (piece == null) return 0;
 
-        // Check the properties of the Circle to determine its type (based on fill, stroke, etc.)
+        // Check the properties of the Circle to determine its type
         Color fill = (Color) piece.getFill();
         Color stroke = (Color) piece.getStroke();
 
@@ -380,13 +377,13 @@ public class Game extends Application {
             return 7; // Red on blue
         }
 
-        return 0; // Default case: empty
+        return 0;
     }
 
 
     private boolean isMoveHighlighted(int targetRow, int targetCol) {
-        Button targetButton = squares[targetRow][targetCol];  // Get the button for this row and column
-        return highlightedSquares.contains(targetButton);  // Check if the button is in the list
+        Button targetButton = squares[targetRow][targetCol];
+        return highlightedSquares.contains(targetButton);
     }
 
 
@@ -394,16 +391,14 @@ public class Game extends Application {
         // Clear previous highlights
         clearHighlightedSquares();
 
-        // Convert row and column to a bit index
-        int index = row * BOARD_SIZE + col;
+        int index = row * BOARD_SIZE + col; // index to use with the Bitboards
 
         // Get the possible moves bitboard for the piece at the current index
         long possibleMoves = getPossibleMovesForIndividualPiece((byte) index, isRed);
 
-        // Iterate through the bitboard to find the possible moves
         for (int i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
             if ((possibleMoves & (1L << i)) != 0) {
-                // If the bit is set, this is a valid move
+
                 int targetRow = i / BOARD_SIZE;
                 int targetCol = i % BOARD_SIZE;
 
@@ -411,21 +406,20 @@ public class Game extends Application {
                 Button targetSquare = squares[targetRow][targetCol];
                 storeOriginalState(targetSquare); // Store the original state before adding the highlight
                 Circle highlightPiece = new Circle(18);
-                highlightPiece.setFill(Color.rgb(77, 10, 121)); // Set highlight color
+                highlightPiece.setFill(Color.rgb(77, 10, 121));
                 targetSquare.setGraphic(highlightPiece); // Highlight the square as a possible move
-                highlightedSquares.add(targetSquare); // Store the highlighted square
+                highlightedSquares.add(targetSquare);
             }
         }
     }
 
-    // Method to store the original graphic state of a square
+    // store the original graphic state of a square
     private void storeOriginalState(Button targetSquare) {
         if (!originalGraphics.containsKey(targetSquare)) {
-            originalGraphics.put(targetSquare, (Circle) targetSquare.getGraphic()); // Store the original piece
+            originalGraphics.put(targetSquare, (Circle) targetSquare.getGraphic());
         }
     }
 
-    // Method to clear only the highlighted squares and restore their original state
     private void clearHighlightedSquares() {
         for (Button targetSquare : highlightedSquares) {
             // Restore the original graphic (either a piece or null)
@@ -436,14 +430,14 @@ public class Game extends Application {
 
     public int[][] readFEN(String fen) {
 
-        // Define the FEN mappings
+
         final String[][] TEMP_MAPPINGS = {
-                {"r0", "X"},
-                {"b0", "Y"},
-                {"rr", "A"},
+                {"r0", "X"}, // red
+                {"b0", "Y"}, // blue
+                {"rr", "A"}, // red double
                 {"rb", "D"}, // Blue on red
-                {"bb", "C"},
-                {"br", "B"} // Red on blue
+                {"bb", "C"}, // blue double
+                {"br", "B"}  // Red on blue
         };
 
         for (String[] mapping : TEMP_MAPPINGS) { // For easier indexes
@@ -452,11 +446,11 @@ public class Game extends Application {
 
         String[] rows = fen.split("/");
 
-        int[][] squares = new int[BOARD_SIZE][BOARD_SIZE];
+        int[][] types = new int[BOARD_SIZE][BOARD_SIZE];
 
         // Loop through the rows in reverse order
         for (int row = 0; row < rows.length; row++) {
-            int col = (row == 0 || row == 7) ? 1 : 0; // Adjust for non-corner rows
+            int col = (row == 0 || row == 7) ? 1 : 0; //  for non-corner rows
             int currentRow = BOARD_SIZE - 1 - row; // reverses row order
 
             for (int i = 0; i < rows[row].length(); i++) {
@@ -468,59 +462,52 @@ public class Game extends Application {
                     byte index = (byte) ((7 - row) * 8 + col);
                     switch (c) {
                         case 'X' -> {
-                            squares[currentRow][col] = 2;
+                            types[currentRow][col] = 2;
                             redSingles |= 1L << index;// Red piece
                         }
                         case 'Y' -> {
-                            squares[currentRow][col] = 3;
+                            types[currentRow][col] = 3;
                             blueSingles |= 1L << index;// Blue piece
                         }
                         case 'A' -> {
-                            squares[currentRow][col] = 4;
+                            types[currentRow][col] = 4;
                             redDoubles |= 1L << index;// Red on red
                         }
                         case 'C' -> {
-                            squares[currentRow][col] = 5;
+                            types[currentRow][col] = 5;
                             blueDoubles |= 1L << index;// Blue on blue
                         }
                         case 'D' -> {
-                            squares[currentRow][col] = 6;
+                            types[currentRow][col] = 6;
                             blue_on_red |= 1L << index;// Red on blue
                         }
                         case 'B' -> {
-                            squares[currentRow][col] = 7;
+                            types[currentRow][col] = 7;
                             red_on_blue |= 1L << index;// Blue on red
                         }
-                        default -> squares[currentRow][col] = 0;
+                        default -> types[currentRow][col] = 0;
                     }
                     col++;
                 }
             }
         }
 
-        return squares;
+        return types;
     }
 
     public long getPossibleMovesForIndividualPiece(byte index, boolean isRed) {
         long singlePieceMask = 1L << index;
-        //long moves = 0L;
 
-        // Überprüfen, ob es sich um einen Einzelstein handelt
+        // single pieces
         if (((isRed ? redSingles : blueSingles) & singlePieceMask) != 0) {
-            // Erzeuge ein Bitboard, das nur diesen Stein enthält
-            // Rufe die vorhandene Methode auf, um mögliche Züge für diesen einen Stein zu ermitteln
             return getPossibleMovesSingles(singlePieceMask, isRed);
         }
 
-        // Überprüfen, ob es sich um einen Doppelstein handelt
+        // double pieces
         if (((isRed ? (redDoubles | red_on_blue) : (blueDoubles | blue_on_red)) & singlePieceMask) != 0) {
-            // Erzeuge ein Bitboard, das nur diesen Stein enthält
-
-            // Rufe die vorhandene Methode auf, um mögliche Züge für diesen einen Doppelstein zu ermitteln
             return getPossibleMovesDoubles(singlePieceMask, isRed);
         }
         throw new IllegalStateException("index"+index +" doesnt fit any figure type");
-        //Removed move variable, returning directly as cant be both single and double
     }
 
     public long getPossibleMovesSingles(long singles, boolean isRed) {
@@ -530,7 +517,7 @@ public class Game extends Application {
 
         long jumpable = (emptySpaces | (isRed ? redSingles : blueSingles));
         // Forward moves (no capture)
-        long forwardMoves = shift(singles, direction) & jumpable;//Removes all occupied spaces, TODO: maybe read doubleGenesis
+        long forwardMoves = shift(singles, direction) & jumpable;//Removes all occupied spaces,
         //commentedBits("Fwd:",forwardMoves);
         // Side moves (left and right)
         long leftMoves = shift(singles & NOT_A_FILE, -1) & jumpable;
@@ -616,11 +603,6 @@ public class Game extends Application {
     }
 
     public static void main(String[] args) {
-        Game game = new Game();
-        game.readFEN("b0b0b0b0b0b0/1b0b0b0b0b0b01/8/8/8/8/1r0r0r0r0r0r01/r0r0r0r0r0r0") ;
-        System.out.println("b0b0b0b0b0b0/1b0b0b0b0b0b01/8/8/8/8/1r0r0r0r0r0r01/r0r0r0r0r0r0");
-        String hello = game.toFEN() ;
-        System.out.println(hello);
-        //launch();
+        launch();
     }
 }
